@@ -11,9 +11,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 """ This provides a restricted tag language to define the sosreport
     index/report
@@ -26,6 +26,7 @@ except ImportError:
 
 # PYCOMPAT
 from six import iteritems
+import six
 
 
 class Node(object):
@@ -117,6 +118,17 @@ class Note(Leaf):
         self.data = content
 
 
+def ends_bs(string):
+    """ Return True if 'string' ends with a backslash, and False otherwise.
+
+        Define this as a named function for no other reason than that pep8
+        now forbids binding of a lambda expression to a name:
+
+        'E731 do not assign a lambda expression, use a def'
+    """
+    return string.endswith('\\')
+
+
 class PlainTextReport(object):
     """Will generate a plain text report from a top_level Report object"""
 
@@ -133,26 +145,36 @@ class PlainTextReport(object):
         (Note, NOTE,         "-  notes:"),
     )
 
-    buf = []
+    line_buf = []
 
     def __init__(self, report_node):
         self.report_node = report_node
 
-    def __str__(self):
-        self.buf = buf = []
+    def unicode(self):
+        self.line_buf = line_buf = []
         for section_name, section_contents in sorted(iteritems(
                 self.report_node.data)):
-            buf.append(section_name + "\n" + self.DIVIDER)
+            line_buf.append(section_name + "\n" + self.DIVIDER)
             for type_, format_, header in self.subsections:
                 self.process_subsection(section_contents, type_.ADDS_TO,
                                         header, format_)
 
-        return "\n".join(buf)
+        # Workaround python.six mishandling of strings ending in '/' by
+        # adding a single space following any '\' at end-of-line.
+        # See Six issue #60.
+        line_buf = [line + " " if ends_bs(line) else line for line in line_buf]
+
+        output = u'\n'.join(map(lambda i: (i if isinstance(i, six.text_type)
+                                           else six.u(i)), line_buf))
+        if six.PY3:
+            return output
+        else:
+            return output.encode('utf8')
 
     def process_subsection(self, section, key, header, format_):
         if key in section:
-            self.buf.append(header)
+            self.line_buf.append(header)
             for item in section.get(key):
-                self.buf.append(format_ % item)
+                self.line_buf.append(format_ % item)
 
 # vim: set et ts=4 sw=4 :

@@ -11,9 +11,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin
 import os
@@ -23,7 +23,7 @@ class DirectoryServer(Plugin, RedHatPlugin):
     """Directory Server
     """
 
-    plugin_name = 'directoryserver'
+    plugin_name = 'ds'
     profiles = ('identity',)
 
     files = ('/etc/dirsrv', '/opt/redhat-ds')
@@ -43,7 +43,7 @@ class DirectoryServer(Plugin, RedHatPlugin):
         self.add_forbidden_path("/etc/dirsrv/slapd*/key3.db")
         self.add_forbidden_path("/etc/dirsrv/slapd*/pwfile.txt")
         self.add_forbidden_path("/etc/dirsrv/slapd*/*passw*")
-        self.add_forbidden_path("/etc/dirsrv/admin-serv/key3.db")
+        self.add_forbidden_path("/etc/dirsrv/admin-serv/key[3-4].db")
         self.add_forbidden_path("/etc/dirsrv/admin-serv/admpw")
         self.add_forbidden_path("/etc/dirsrv/admin-serv/password.conf")
         try:
@@ -64,6 +64,7 @@ class DirectoryServer(Plugin, RedHatPlugin):
                 "/etc/dirsrv/slapd*/dse.ldif.startOK",
                 "/etc/dirsrv/slapd*/secmod.db",
                 "/etc/dirsrv/slapd*/schema/*.ldif",
+                "/etc/dirsrv/admin-serv",
                 "/var/log/dirsrv/*"
             ])
         elif "ds7" in self.check_version():

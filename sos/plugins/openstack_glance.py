@@ -2,6 +2,7 @@
 # Copyright (C) 2012 Rackspace US, Inc.,
 #                    Justin Shepherd <jshepher@rackspace.com>
 # Copyright (C) 2009 Red Hat, Inc., Joey Boggs <jboggs@redhat.com>
+# Copyright (C) 2017 Red Hat, Inc., Martin Schuppert <mschuppert@redhat.com>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,11 +14,12 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
+import os
 
 
 class OpenStackGlance(Plugin):
@@ -36,13 +38,23 @@ class OpenStackGlance(Plugin):
 
         self.limit = self.get_option("log_size")
         if self.get_option("all_logs"):
-            self.add_copy_spec_limit("/var/log/glance/",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/glance/", sizelimit=self.limit)
         else:
-            self.add_copy_spec_limit("/var/log/glance/*.log",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/glance/*.log", sizelimit=self.limit)
 
         self.add_copy_spec("/etc/glance/")
+
+        if self.get_option("verify"):
+            self.add_cmd_output("rpm -V %s" % ' '.join(self.packages))
+
+        vars = [p in os.environ for p in [
+                'OS_USERNAME', 'OS_PASSWORD', 'OS_TENANT_NAME']]
+        if not all(vars):
+            self.soslog.warning("Not all environment variables set. Source "
+                                "the environment file for the user intended "
+                                "to connect to the OpenStack environment.")
+        else:
+            self.add_cmd_output("openstack image list --long")
 
     def postproc(self):
         protect_keys = [

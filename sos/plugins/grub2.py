@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
@@ -33,10 +33,13 @@ class Grub2(Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin):
             "/etc/grub2.cfg",
             "/etc/grub.d"
         ])
-        self.add_cmd_output([
-            "ls -lanR /boot",
-            "grub2-mkconfig"
-        ])
+
+        self.add_cmd_output("ls -lanR /boot")
+        # call grub2-mkconfig with GRUB_DISABLE_OS_PROBER=true to prevent
+        # possible unwanted loading of some kernel modules
+        env = {}
+        env['GRUB_DISABLE_OS_PROBER'] = 'true'
+        self.add_cmd_output("grub2-mkconfig", env=env)
 
     def postproc(self):
         # the trailing space is required; python treats '_' as whitespace

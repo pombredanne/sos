@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin
 
@@ -19,7 +19,7 @@ class SubscriptionManager(Plugin, RedHatPlugin):
     """subscription-manager information
     """
 
-    plugin_name = 'subscription-manager'
+    plugin_name = 'subscription_manager'
     profiles = ('system', 'packagemanager', 'sysmgmt')
 
     files = ('/etc/rhsm/rhsm.conf',)
@@ -29,6 +29,7 @@ class SubscriptionManager(Plugin, RedHatPlugin):
         # rhsm config and logs
         self.add_copy_spec([
             "/etc/rhsm/",
+            "/var/lib/rhsm/",
             "/var/log/rhsm/rhsm.log",
             "/var/log/rhsm/rhsmcertd.log"])
         self.add_cmd_output([

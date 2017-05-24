@@ -8,13 +8,14 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 import time
 import os.path
 import os
+import glob
 import string
 from sos.plugins import Plugin, RedHatPlugin
 
@@ -91,8 +92,24 @@ class Gluster(Plugin, RedHatPlugin):
             # common to all versions
             "/etc/glusterfs",
             "/var/lib/glusterd/",
-            "/var/log/glusterfs"
-        ])
+            # collect nfs-ganesha related configuration
+            "/var/run/gluster/shared_storage/nfs-ganesha/"
+        ] + glob.glob('/var/run/gluster/*tier-dht/*'))
+
+        # collect logs - apply log_size for any individual file
+        # all_logs takes precedence over logsize
+        if not self.get_option("all_logs"):
+            limit = self.get_option("log_size")
+        else:
+            limit = 0
+
+        if limit:
+            for f in (glob.glob("/var/log/glusterfs/*log") +
+                      glob.glob("/var/log/glusterfs/*/*log") +
+                      glob.glob("/var/log/glusterfs/geo-replication/*/*log")):
+                self.add_copy_spec(f, limit)
+        else:
+            self.add_copy_spec("/var/log/glusterfs")
 
         self.make_preparations(self.statedump_dir)
         if self.check_ext_prog("killall -USR1 glusterfs glusterfsd"):

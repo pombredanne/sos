@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
@@ -31,12 +31,15 @@ class Lvm2(Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin):
         """Collects an lvmdump in standard format with optional metadata
            archives for each physical volume present.
         """
+        lvmdump_path = self.get_cmd_output_path(name="lvmdump", make=False)
         lvmdump_cmd = "lvmdump %s -d '%s'"
         lvmdump_opts = ""
+
         if metadata:
             lvmdump_opts = "-a -m"
-        cmd = lvmdump_cmd % (lvmdump_opts,
-                             self.get_cmd_output_path(name="lvmdump"))
+
+        cmd = lvmdump_cmd % (lvmdump_opts, lvmdump_path)
+
         self.add_cmd_output(cmd, chroot=self.tmp_in_sysroot())
 
     def setup(self):

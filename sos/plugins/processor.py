@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, UbuntuPlugin, DebianPlugin
 
@@ -22,7 +22,7 @@ class Processor(Plugin, RedHatPlugin, UbuntuPlugin, DebianPlugin):
     plugin_name = 'processor'
     profiles = ('system', 'hardware', 'memory')
     files = ('/proc/cpuinfo',)
-    packages = ('cpufreq-utils')
+    packages = ('cpufreq-utils', 'cpuid')
 
     def setup(self):
         self.add_copy_spec([
@@ -35,7 +35,11 @@ class Processor(Plugin, RedHatPlugin, UbuntuPlugin, DebianPlugin):
             "lscpu",
             "cpupower info",
             "cpupower idle-info",
-            "cpupower frequency-info"
+            "cpupower frequency-info",
+            "cpufreq-info",
+            "cpuid",
+            "cpuid -r",
+            "turbostat --debug sleep 10"
         ])
 
         if '86' in self.policy().get_arch():

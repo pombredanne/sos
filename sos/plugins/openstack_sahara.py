@@ -7,12 +7,12 @@
 
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
@@ -26,17 +26,18 @@ class OpenStackSahara(Plugin):
 
     def setup(self):
         self.add_copy_spec("/etc/sahara/")
-        self.add_cmd_output("journalctl -u openstack-sahara-all")
-        self.add_cmd_output("journalctl -u openstack-sahara-api")
-        self.add_cmd_output("journalctl -u openstack-sahara-engine")
+        self.add_journal(units="openstack-sahara-all")
+        self.add_journal(units="openstack-sahara-api")
+        self.add_journal(units="openstack-sahara-engine")
 
         self.limit = self.get_option("log_size")
         if self.get_option("all_logs"):
-            self.add_copy_spec_limit("/var/log/sahara/",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/sahara/", sizelimit=self.limit)
         else:
-            self.add_copy_spec_limit("/var/log/sahara/*.log",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/sahara/*.log", sizelimit=self.limit)
+
+        if self.get_option("verify"):
+            self.add_cmd_output("rpm -V %s" % ' '.join(self.packages))
 
     def postproc(self):
         protect_keys = [
@@ -76,7 +77,7 @@ class RedHatSahara(OpenStackSahara, RedHatPlugin):
 
     def setup(self):
         super(RedHatSahara, self).setup()
-        self.add_copy_spec("/etc/sudoers.d/sahara")
+        self.add_copy_spec("/etc/sudoers.d/sahara*")
 
 
 # vim: et ts=4 sw=4

@@ -8,15 +8,15 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin
 
 
-class RedHatAccessInsights(Plugin, RedHatPlugin):
-    '''Collect config and log for Red Hat Access Insights
+class RedHatInsights(Plugin, RedHatPlugin):
+    '''Collect config and log for Red Hat Insights
     '''
     plugin_name = 'insights'
     packages = ['redhat-access-insights']
@@ -24,10 +24,14 @@ class RedHatAccessInsights(Plugin, RedHatPlugin):
     conf_file = '/etc/redhat-access-insights/redhat-access-insights.conf'
 
     def setup(self):
-        log_size = self.get_option('log_size')
         self.add_copy_spec(self.conf_file)
-        self.add_copy_spec_limit('/var/log/redhat-access-insights/*.log',
-                                 sizelimit=log_size)
+        self.limit = self.get_option("log_size")
+        if self.get_option("all_logs"):
+            self.add_copy_spec("/var/log/redhat-access-insights/*.log*",
+                               sizelimit=self.limit)
+        else:
+            self.add_copy_spec("/var/log/redhat-access-insights/*.log",
+                               sizelimit=self.limit)
 
     def postproc(self):
         self.do_file_sub(

@@ -17,9 +17,9 @@ supplied for application-specific information
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 import sys
 import traceback
@@ -49,9 +49,9 @@ from six.moves import zip, input
 from six import print_
 
 if six.PY3:
-    from configparser import ConfigParser
+    from configparser import ConfigParser, ParsingError, Error
 else:
-    from ConfigParser import ConfigParser
+    from ConfigParser import ConfigParser, ParsingError, Error
 
 # file system errors that should terminate a run
 fatal_fs_errors = (errno.ENOSPC, errno.EROFS)
@@ -83,7 +83,8 @@ class TempFileUtil(object):
 
     def new(self):
         fd, fname = tempfile.mkstemp(dir=self.tmp_dir)
-        fobj = open(fname, 'w')
+        # avoid TOCTOU race by using os.fdopen()
+        fobj = os.fdopen(fd, 'w+')
         self.files.append((fname, fobj))
         return fobj
 
@@ -111,8 +112,8 @@ class OptionParserExtended(OptionParser):
         print_()
         print_("Some examples:")
         print_()
-        print_(" enable cluster plugin only and collect dlm lockdumps:")
-        print_("   # sosreport -o cluster -k cluster.lockdump")
+        print_(" enable dlm plugin only and collect dlm lockdumps:")
+        print_("   # sosreport -o dlm -k dlm.lockdump")
         print_()
         print_(" disable memory and samba plugins, turn off rpm -Va "
                "collection:")
@@ -599,7 +600,8 @@ class SoSOptions(object):
                           default=deque())
         parser.add_option("--log-size", action="store",
                           dest="log_size", default=10, type="int",
-                          help="set a limit on the size of collected logs")
+                          help="set a limit on the size of collected logs "
+                               "(in MiB)")
         parser.add_option("-a", "--alloptions", action="store_true",
                           dest="usealloptions", default=False,
                           help="enable all options for loaded plugins")
@@ -636,7 +638,9 @@ class SoSOptions(object):
                           dest="profiles", type="string", default=deque(),
                           help="enable plugins selected by the given profiles")
         parser.add_option("--list-profiles", action="store_true",
-                          dest="list_profiles", default=False)
+                          dest="list_profiles", default=False,
+                          help="display a list of available profiles and "
+                               "plugins that they include")
         parser.add_option("--name", action="store",
                           dest="customer_name",
                           help="specify report name")
@@ -649,7 +653,7 @@ class SoSOptions(object):
                           default=None)
         parser.add_option("--no-report", action="store_true",
                           dest="noreport",
-                          help="Disable HTML/XML reporting", default=False)
+                          help="disable HTML/XML reporting", default=False)
         parser.add_option("-s", "--sysroot", action="store", dest="sysroot",
                           help="system root directory path (default='/')",
                           default=None)
@@ -680,6 +684,7 @@ class SoSReport(object):
         self._args = args
         self.sysroot = "/"
         self.sys_tmp = None
+        self.exit_process = False
 
         try:
             import signal
@@ -808,8 +813,15 @@ class SoSReport(object):
 
     def get_exit_handler(self):
         def exit_handler(signum, frame):
+            self.exit_process = True
             self._exit()
         return exit_handler
+
+    def handle_exception(self, plugname=None, func=None):
+        if self.raise_plugins or self.exit_process:
+            raise
+        if plugname and func:
+            self._log_plugin_exception(plugname, func)
 
     def _read_config(self):
         self.config = ConfigParser()
@@ -817,18 +829,24 @@ class SoSReport(object):
             config_file = self.opts.config_file
         else:
             config_file = '/etc/sos.conf'
+
         try:
-            self.config.readfp(open(config_file))
-        except IOError:
-            pass
+            try:
+                with open(config_file) as f:
+                    self.config.readfp(f)
+            except (ParsingError, Error) as e:
+                raise exit('Failed to parse configuration '
+                           'file %s' % config_file)
+        except (OSError, IOError) as e:
+            raise exit('Unable to read configuration file %s '
+                       ': %s' % (config_file, e.args[1]))
 
     def _setup_logging(self):
         # main soslog
         self.soslog = logging.getLogger('sos')
         self.soslog.setLevel(logging.DEBUG)
         self.sos_log_file = self.get_temp_file()
-        self.sos_log_file.close()
-        flog = logging.FileHandler(self.sos_log_file.name)
+        flog = logging.StreamHandler(self.sos_log_file)
         flog.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s: %(message)s'))
         flog.setLevel(logging.INFO)
@@ -851,8 +869,7 @@ class SoSReport(object):
         self.ui_log = logging.getLogger('sos_ui')
         self.ui_log.setLevel(logging.INFO)
         self.sos_ui_log_file = self.get_temp_file()
-        self.sos_ui_log_file.close()
-        ui_fhandler = logging.FileHandler(self.sos_ui_log_file.name)
+        ui_fhandler = logging.StreamHandler(self.sos_ui_log_file)
         ui_fhandler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s: %(message)s'))
 
@@ -864,18 +881,16 @@ class SoSReport(object):
             ui_console.setLevel(logging.INFO)
             self.ui_log.addHandler(ui_console)
 
-    def _finish_logging(self):
-        logging.shutdown()
-
+    def _add_sos_logs(self):
         # Make sure the log files are added before we remove the log
         # handlers. This prevents "No handlers could be found.." messages
         # from leaking to the console when running in --quiet mode when
         # Archive classes attempt to acess the log API.
         if getattr(self, "sos_log_file", None):
-            self.archive.add_file(self.sos_log_file.name,
+            self.archive.add_file(self.sos_log_file,
                                   dest=os.path.join('sos_logs', 'sos.log'))
         if getattr(self, "sos_ui_log_file", None):
-            self.archive.add_file(self.sos_ui_log_file.name,
+            self.archive.add_file(self.sos_ui_log_file,
                                   dest=os.path.join('sos_logs', 'ui.log'))
 
     def _get_disabled_plugins(self):
@@ -936,11 +951,13 @@ class SoSReport(object):
         using_profiles = len(self.opts.profiles)
         policy_classes = self.policy.valid_subclasses
         extra_classes = []
+
         if self.opts.experimental:
             extra_classes.append(sos.plugins.ExperimentalPlugin)
         valid_plugin_classes = tuple(policy_classes + extra_classes)
         validate_plugin = self.policy.validate_plugin
         remaining_profiles = list(self.opts.profiles)
+
         # validate and load plugins
         for plug in plugins:
             plugbase, ext = os.path.splitext(plug)
@@ -951,6 +968,7 @@ class SoSReport(object):
                     continue
 
                 plugin_class = self.policy.match_plugin(plugin_classes)
+
                 if not validate_plugin(plugin_class,
                                        experimental=self.opts.experimental):
                     self.soslog.warning(
@@ -967,8 +985,6 @@ class SoSReport(object):
 
                 # plug-in is valid, let's decide whether run it or not
                 self.plugin_names.append(plugbase)
-                if hasattr(plugin_class, "profiles"):
-                    self.profiles.update(plugin_class.profiles)
 
                 in_profile = self._is_in_profile(plugin_class)
                 if not in_profile:
@@ -987,6 +1003,10 @@ class SoSReport(object):
                     self._skip(plugin_class, _("optional"))
                     continue
 
+                # only add the plugin's profiles once we know it is usable
+                if hasattr(plugin_class, "profiles"):
+                    self.profiles.update(plugin_class.profiles)
+
                 # true when the null (empty) profile is active
                 default_profile = not using_profiles and in_profile
                 if self._is_not_specified(plugbase) and default_profile:
@@ -996,13 +1016,11 @@ class SoSReport(object):
                 for i in plugin_class.profiles:
                     if i in remaining_profiles:
                         remaining_profiles.remove(i)
-
                 self._load(plugin_class)
             except Exception as e:
                 self.soslog.warning(_("plugin %s does not install, "
                                       "skipping: %s") % (plug, e))
-                if self.raise_plugins:
-                    raise
+                self.handle_exception()
         if len(remaining_profiles) > 0:
             self.soslog.error(_("Unknown or inactive profile(s) provided:"
                                 " %s") % ", ".join(remaining_profiles))
@@ -1085,6 +1103,16 @@ class SoSReport(object):
                 self.all_options.append((plugin, plugin_name, optname,
                                          optparm))
 
+    def _report_profiles_and_plugins(self):
+        self.ui_log.info("")
+        if len(self.loaded_plugins):
+            self.ui_log.info(" %d profiles, %d plugins"
+                             % (len(self.profiles), len(self.loaded_plugins)))
+        else:
+            # no valid plugins for this profile
+            self.ui_log.info(" %d profiles" % len(self.profiles))
+        self.ui_log.info("")
+
     def list_plugins(self):
         if not self.loaded_plugins and not self.skipped_plugins:
             self.soslog.fatal(_("no valid plugins found"))
@@ -1135,10 +1163,7 @@ class SoSReport(object):
         lines = _format_list("Profiles: ", profiles, indent=True)
         for line in lines:
             self.ui_log.info(" %s" % line)
-        self.ui_log.info("")
-        self.ui_log.info(" %d profiles, %d plugins"
-                         % (len(self.profiles), len(self.loaded_plugins)))
-        self.ui_log.info("")
+        self._report_profiles_and_plugins()
 
     def list_profiles(self):
         if not self.profiles:
@@ -1160,10 +1185,7 @@ class SoSReport(object):
             lines = _format_list("%-15s " % profile, plugins, indent=True)
             for line in lines:
                 self.ui_log.info(" %s" % line)
-        self.ui_log.info("")
-        self.ui_log.info(" %d profiles, %d plugins"
-                         % (len(profiles), len(self.loaded_plugins)))
-        self.ui_log.info("")
+        self._report_profiles_and_plugins()
 
     def batch(self):
         if self.opts.batch:
@@ -1237,13 +1259,9 @@ class SoSReport(object):
                                       % e.strerror)
                     self.ui_log.error("")
                     self._exit(1)
-                if self.raise_plugins:
-                    raise
-                self._log_plugin_exception(plugname, "setup")
+                self.handle_exception(plugname, "setup")
             except:
-                if self.raise_plugins:
-                    raise
-                self._log_plugin_exception(plugname, "setup")
+                self.handle_exception(plugname, "setup")
 
     def version(self):
         """Fetch version information from all plugins and store in the report
@@ -1251,8 +1269,10 @@ class SoSReport(object):
 
         versions = []
         versions.append("sosreport: %s" % __version__)
+
         for plugname, plug in self.loaded_plugins:
             versions.append("%s: %s" % (plugname, plug.version))
+
         self.archive.add_string(content="\n".join(versions),
                                 dest='version.txt')
 
@@ -1285,13 +1305,9 @@ class SoSReport(object):
                                       % e.strerror)
                     self.ui_log.error("")
                     self._exit(1)
-                if self.raise_plugins:
-                    raise
-                self._log_plugin_exception(plugname, "collect")
+                self.handle_exception(plugname, "collect")
             except:
-                if self.raise_plugins:
-                    raise
-                self._log_plugin_exception(plugname, "collect")
+                self.handle_exception(plugname, "collect")
         self.ui_log.info("")
 
     def report(self):
@@ -1339,10 +1355,11 @@ class SoSReport(object):
             report.add(section)
         try:
             fd = self.get_temp_file()
-            fd.write(str(PlainTextReport(report)))
+            output = PlainTextReport(report).unicode()
+            fd.write(output)
             fd.flush()
-            self.archive.add_file(fd.name, dest=os.path.join('sos_reports',
-                                                             'sos.txt'))
+            self.archive.add_file(fd, dest=os.path.join('sos_reports',
+                                                        'sos.txt'))
         except (OSError, IOError) as e:
             if e.errno in fatal_fs_errors:
                 self.ui_log.error("")
@@ -1414,14 +1431,13 @@ class SoSReport(object):
             try:
                 html = plug.report()
             except:
-                if self.raise_plugins:
-                    raise
+                self.handle_exception()
             else:
                 rfd.write(html)
         rfd.write("</body></html>")
         rfd.flush()
-        self.archive.add_file(rfd.name, dest=os.path.join('sos_reports',
-                                                          'sos.html'))
+        self.archive.add_file(rfd, dest=os.path.join('sos_reports',
+                                                     'sos.html'))
 
     def postproc(self):
         for plugname, plug in self.loaded_plugins:
@@ -1434,13 +1450,9 @@ class SoSReport(object):
                                       % e.strerror)
                     self.ui_log.error("")
                     self._exit(1)
-                if self.raise_plugins:
-                    raise
-                self._log_plugin_exception(plugname, "postproc")
+                self.handle_exception(plugname, "postproc")
             except:
-                if self.raise_plugins:
-                    raise
-                self._log_plugin_exception(plugname, "postproc")
+                self.handle_exception(plugname, "postproc")
 
     def _create_checksum(self, archive, hash_name):
         if not archive:
@@ -1464,7 +1476,7 @@ class SoSReport(object):
         # files are closed and cleaned up at exit.
         #
         # All subsequent terminal output must use print().
-        self._finish_logging()
+        self._add_sos_logs()
 
         archive = None    # archive path
         directory = None  # report directory path (--build)
@@ -1496,7 +1508,9 @@ class SoSReport(object):
             directory = self.archive.get_archive_path()
             dir_name = os.path.basename(directory)
             try:
-                os.rename(directory, os.path.join(self.sys_tmp, dir_name))
+                final_dir = os.path.join(self.sys_tmp, dir_name)
+                os.rename(directory, final_dir)
+                directory = final_dir
             except (OSError, IOError):
                     print(_("Error moving directory: %s" % directory))
                     return False
@@ -1545,6 +1559,7 @@ class SoSReport(object):
         self.policy.display_results(archive, directory, checksum)
 
         # clean up
+        logging.shutdown()
         if self.tempfile_util:
             self.tempfile_util.clean()
         if self.tmpdir:

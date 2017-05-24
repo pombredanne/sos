@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from __future__ import with_statement
 
@@ -18,11 +18,11 @@ import os
 import re
 import inspect
 from subprocess import Popen, PIPE, STDOUT
-import hashlib
 import logging
 import fnmatch
 import errno
 import shlex
+import glob
 
 from contextlib import closing
 
@@ -68,10 +68,11 @@ def convert_bytes(bytes_, K=1 << 10, M=1 << 20, G=1 << 30, T=1 << 40):
 
 
 def find(file_pattern, top_dir, max_depth=None, path_pattern=None):
-    """generator function to find files recursively. Usage:
+    """Generator function to find files recursively.
+    Usage::
 
-    for filename in find("*.properties", "/var/log/foobar"):
-        print filename
+        for filename in find("*.properties", "/var/log/foobar"):
+            print filename
     """
     if max_depth:
         base_depth = os.path.dirname(top_dir).count(os.path.sep)
@@ -109,7 +110,7 @@ def is_executable(command):
 
 
 def sos_get_command_output(command, timeout=300, stderr=False,
-                           chroot=None, chdir=None):
+                           chroot=None, chdir=None, env=None):
     """Execute a command and return a dictionary of status and output,
     optionally changing root or current working directory before
     executing command.
@@ -126,6 +127,10 @@ def sos_get_command_output(command, timeout=300, stderr=False,
     cmd_env = os.environ
     # ensure consistent locale for collected command output
     cmd_env['LC_ALL'] = 'C'
+    # optionally add an environment change for the command
+    if env:
+        for key, value in env.items():
+            cmd_env[key] = value
     # use /usr/bin/timeout to implement a timeout
     if timeout and is_executable("timeout"):
         command = "timeout %ds %s" % (timeout, command)
@@ -134,8 +139,16 @@ def sos_get_command_output(command, timeout=300, stderr=False,
     if not six.PY3:
         command = command.encode('utf-8', 'ignore')
     args = shlex.split(command)
+    # Expand arguments that are wildcard paths.
+    expanded_args = []
+    for arg in args:
+        expanded_arg = glob.glob(arg)
+        if expanded_arg:
+            expanded_args.extend(expanded_arg)
+        else:
+            expanded_args.append(arg)
     try:
-        p = Popen(args, shell=False, stdout=PIPE,
+        p = Popen(expanded_args, shell=False, stdout=PIPE,
                   stderr=STDOUT if stderr else PIPE,
                   bufsize=-1, env=cmd_env, close_fds=True,
                   preexec_fn=_child_prep_fn)

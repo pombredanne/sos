@@ -10,9 +10,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
@@ -25,22 +25,27 @@ class Systemd(Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin):
     profiles = ('system', 'services', 'boot')
 
     packages = ('systemd',)
-    files = ('/usr/lib/systemd/systemd',)
+    files = (
+        '/usr/lib/systemd/systemd',
+        '/lib/systemd/systemd'
+    )
 
     def setup(self):
         self.add_cmd_output([
+            "systemctl status --all",
             "systemctl show --all",
+            "systemctl show *service --all",
+            # It is possible to do systemctl show with target, slice,
+            # device, socket, scope, and mount too but service and
+            # status --all mostly seems to cover the others.
             "systemctl list-units",
             "systemctl list-units --failed",
-            "systemctl list-units --all",
             "systemctl list-unit-files",
             "systemctl show-environment",
             "systemd-delta",
+            "systemd-analyze",
             "journalctl --list-boots",
-            "ls -l /lib/systemd",
-            "ls -l /lib/systemd/system-shutdown",
-            "ls -l /lib/systemd/system-generators",
-            "ls -l /lib/systemd/user-generators",
+            "ls -lR /lib/systemd",
             "timedatectl"
         ])
 

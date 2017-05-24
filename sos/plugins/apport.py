@@ -1,4 +1,5 @@
 # Copyright (c) 2012 Adam Stokes <adam.stokes@canonical.com>
+
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
@@ -9,9 +10,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, DebianPlugin, UbuntuPlugin
 
@@ -26,10 +27,8 @@ class Apport(Plugin, DebianPlugin, UbuntuPlugin):
     def setup(self):
         if not self.get_option("all_logs"):
             limit = self.get_option("log_size")
-            self.add_copy_spec_limit("/var/log/apport.log",
-                                     sizelimit=limit)
-            self.add_copy_spec_limit("/var/log/apport.log.1",
-                                     sizelimit=limit)
+            self.add_copy_spec("/var/log/apport.log", sizelimit=limit)
+            self.add_copy_spec("/var/log/apport.log.1", sizelimit=limit)
         else:
             self.add_copy_spec("/var/log/apport*")
         self.add_copy_spec("/etc/apport/*")

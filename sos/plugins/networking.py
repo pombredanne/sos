@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, UbuntuPlugin, DebianPlugin
 import os
@@ -23,8 +23,13 @@ class Networking(Plugin):
     plugin_name = "networking"
     profiles = ('network', 'hardware', 'system')
     trace_host = "www.example.com"
-    option_list = [("traceroute", "collects a traceroute to %s" % trace_host,
-                    "slow", False)]
+    option_list = [(
+        ("traceroute", "collect a traceroute to %s" % trace_host, "slow",
+         False)
+    )]
+
+    # switch to enable netstat "wide" (non-truncated) output mode
+    ns_wide = "-W"
 
     def get_bridge_name(self, brctl_file):
         """Return a list for which items are bridge name according to the
@@ -71,7 +76,7 @@ class Networking(Plugin):
                or line.isspace() \
                or line[:1].isspace():
                 return out
-            out.append(line)
+            out.append(line.partition(' ')[0])
         return out
 
     def get_netns_devs(self, namespace):
@@ -107,6 +112,13 @@ class Networking(Plugin):
             cmd = "ip6tables -t "+tablename+" -nvL"
             self.add_cmd_output(cmd)
 
+    def collect_nftables(self):
+        """ Collects nftables rulesets with 'nft' commands if the modules
+        are present """
+
+        if self.check_ext_prog("grep -q nf_tables /proc/modules"):
+            self.add_cmd_output("nft list ruleset")
+
     def setup(self):
         super(Networking, self).setup()
         self.add_copy_spec([
@@ -121,6 +133,9 @@ class Networking(Plugin):
             "/etc/network*",
             "/etc/NetworkManager/NetworkManager.conf",
             "/etc/NetworkManager/system-connections",
+            "/etc/nftables",
+            "/etc/sysconfig/nftables.conf",
+            "/etc/nftables.conf",
             "/etc/dnsmasq*",
             "/sys/class/net/*/flags",
             "/etc/iproute2"
@@ -128,6 +143,11 @@ class Networking(Plugin):
         self.add_forbidden_path("/proc/net/rpc/use-gss-proxy")
         self.add_forbidden_path("/proc/net/rpc/*/channel")
         self.add_forbidden_path("/proc/net/rpc/*/flush")
+        # Cisco CDP
+        self.add_forbidden_path("/proc/net/cdp")
+        self.add_forbidden_path("/sys/net/cdp")
+        # Dialogic Diva
+        self.add_forbidden_path("/proc/net/eicon")
 
         self.add_cmd_output("ip -o addr", root_symlink="ip_addr")
         self.add_cmd_output("route -n", root_symlink="route")
@@ -138,15 +158,21 @@ class Networking(Plugin):
         self.collect_ip6table("filter")
         self.collect_ip6table("nat")
         self.collect_ip6table("mangle")
-        self.add_cmd_output("netstat -neopa", root_symlink="netstat")
+
+        self.collect_nftables()
+
+        self.add_cmd_output("netstat %s -neopa" % self.ns_wide,
+                            root_symlink="netstat")
+
         self.add_cmd_output([
             "netstat -s",
-            "netstat -agn",
+            "netstat %s -agn" % self.ns_wide,
+            "ss -peaonmi",
             "ip route show table all",
             "ip -6 route show table all",
             "ip -4 rule",
             "ip -6 rule",
-            "ip link",
+            "ip -s -d link",
             "ip address",
             "ifenslave -a",
             "ip mroute show",
@@ -155,6 +181,7 @@ class Networking(Plugin):
             "ip neigh show nud noarp",
             "biosdevname -d",
             "tc -s qdisc show",
+            "ip -s macsec show",
             "iptables -vnxL",
             "ip6tables -vnxL"
         ])
@@ -209,14 +236,29 @@ class Networking(Plugin):
                 "nmcli --terse --fields NAME con")
             if nmcli_con_show_result['status'] == 0:
                 for con in nmcli_con_show_result['output'].splitlines():
-                    self.add_cmd_output("%s '%s'" %
+                    if con[0:7] == 'Warning':
+                        continue
+                    # nm names may contain embedded quotes (" and '). These
+                    # will cause an exception in shlex.split() if the quotes
+                    # are unbalanced. This may happen with names like:
+                    # "Foobar's Wireless Network". Although the problen will
+                    # occur for both single and double quote characters the
+                    # former is considerably more likely in object names since
+                    # it is syntactically valid in many human languages.
+                    #
+                    # Reverse the normal sos quoting convention here and place
+                    # double quotes around the innermost quoted string.
+                    self.add_cmd_output('%s "%s"' %
                                         (nmcli_con_details_cmd, con))
 
             nmcli_dev_status_result = self.call_ext_prog(
                 "nmcli --terse --fields DEVICE dev")
             if nmcli_dev_status_result['status'] == 0:
                 for dev in nmcli_dev_status_result['output'].splitlines():
-                    self.add_cmd_output("%s '%s'" %
+                    if dev[0:7] == 'Warning':
+                        continue
+                    # See above comment describing quoting conventions.
+                    self.add_cmd_output('%s "%s"' %
                                         (nmcli_dev_details_cmd, dev))
 
         # Get ethtool output for every device that does not exist in a
@@ -246,8 +288,8 @@ class Networking(Plugin):
             if brctl_file:
                 for br_name in self.get_bridge_name(brctl_file):
                     self.add_cmd_output([
-                            "brctl showstp "+br_name,
-                            "brctl showmacs "+br_name
+                        "brctl showstp "+br_name,
+                        "brctl showmacs "+br_name
                     ])
 
         if self.get_option("traceroute"):
@@ -262,7 +304,8 @@ class Networking(Plugin):
                 self.add_cmd_output([
                     cmd_prefix + namespace + " ip address show",
                     cmd_prefix + namespace + " ip route show table all",
-                    cmd_prefix + namespace + " iptables-save"
+                    cmd_prefix + namespace + " iptables-save",
+                    cmd_prefix + namespace + " ss -peaonmi"
                 ])
 
             # Devices that exist in a namespace use less ethtool
@@ -292,6 +335,16 @@ class RedHatNetworking(Networking, RedHatPlugin):
     trace_host = "rhn.redhat.com"
 
     def setup(self):
+        # Handle change from -T to -W in Red Hat netstat 2.0 and greater.
+        try:
+            netstat_pkg = self.policy().package_manager.all_pkgs()['net-tools']
+            # major version
+            if int(netstat_pkg['version'][0]) < 2:
+                self.ns_wide = "-T"
+        except:
+            # default to upstream option
+            pass
+
         super(RedHatNetworking, self).setup()
 
 

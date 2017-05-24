@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, UbuntuPlugin
 
@@ -21,10 +21,6 @@ class Ceph(Plugin, RedHatPlugin, UbuntuPlugin):
 
     plugin_name = 'ceph'
     profiles = ('storage', 'virt')
-
-    option_list = [
-        ("log", "gathers all ceph logs", "slow", False)
-    ]
 
     packages = (
         'ceph',
@@ -37,14 +33,27 @@ class Ceph(Plugin, RedHatPlugin, UbuntuPlugin):
     )
 
     def setup(self):
+        all_logs = self.get_option("all_logs")
+        limit = self.get_option("log_size")
+
+        if not all_logs:
+            self.add_copy_spec([
+                "/var/log/ceph/*.log",
+                "/var/log/radosgw/*.log",
+                "/var/log/calamari/*.log"
+            ], sizelimit=limit)
+        else:
+            self.add_copy_spec([
+                "/var/log/ceph/",
+                "/var/log/calamari",
+                "/var/log/radosgw"
+            ], sizelimit=limit)
+
         self.add_copy_spec([
             "/etc/ceph/",
-            "/var/log/ceph/",
-            "/var/lib/ceph/",
-            "/var/run/ceph/",
             "/etc/calamari/",
-            "/var/log/calamari",
-            "/var/log/radosgw"
+            "/var/lib/ceph/",
+            "/var/run/ceph/"
         ])
 
         self.add_cmd_output([
@@ -56,14 +65,29 @@ class Ceph(Plugin, RedHatPlugin, UbuntuPlugin):
             "ceph mon stat",
             "ceph mon dump",
             "ceph df",
-            "ceph report"
+            "ceph report",
+            "ceph osd df tree",
+            "ceph fs dump --format json-pretty",
+            "ceph fs ls",
+            "ceph pg dump",
+            "ceph health detail --format json-pretty",
+            "ceph osd crush show-tunables",
+            "ceph-disk list"
         ])
 
-        self.add_forbidden_path("/etc/ceph/*keyring")
-        self.add_forbidden_path("/var/lib/ceph/*keyring")
-        self.add_forbidden_path("/var/lib/ceph/*/*keyring")
-        self.add_forbidden_path("/var/lib/ceph/*/*/*keyring")
+        self.add_forbidden_path("/etc/ceph/*keyring*")
+        self.add_forbidden_path("/var/lib/ceph/*keyring*")
+        self.add_forbidden_path("/var/lib/ceph/*/*keyring*")
+        self.add_forbidden_path("/var/lib/ceph/*/*/*keyring*")
         self.add_forbidden_path("/var/lib/ceph/osd/*")
-        self.add_forbidden_path("/var/lib/ceph/osd/mon/*")
+        self.add_forbidden_path("/var/lib/ceph/mon/*")
+
+# Excludes temporary ceph-osd mount location like
+# /var/lib/ceph/tmp/mnt.XXXX from sos collection.
+# In the /var/lib/ceph/tmp/ can still other files of potential
+# interest exists, so exclude only known temporary mount locations.
+
+        self.add_forbidden_path("/var/lib/ceph/tmp/*mnt*")
+        self.add_forbidden_path("/etc/ceph/*bindpass*")
 
 # vim: set et ts=4 sw=4 :

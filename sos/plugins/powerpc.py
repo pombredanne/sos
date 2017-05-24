@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 # This plugin enables collection of logs for Power systems and more
 # specific logs for Pseries, PowerNV platforms.
@@ -57,9 +57,7 @@ class PowerPC(Plugin, RedHatPlugin, UbuntuPlugin, DebianPlugin):
                 "ppc64_cpu --run-mode",
                 "ppc64_cpu --frequency",
                 "ppc64_cpu --dscr",
-                "lscfg -vp",
-                "lsmcode -A",
-                "lsvpd --debug"
+                "diag_encl -v"
             ])
 
         if ispSeries:
@@ -70,7 +68,6 @@ class PowerPC(Plugin, RedHatPlugin, UbuntuPlugin, DebianPlugin):
                 "/var/log/platform"
             ])
             self.add_cmd_output([
-                "lsvio -des",
                 "servicelog --dump",
                 "servicelog_notify --list",
                 "usysattn",

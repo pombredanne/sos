@@ -2,6 +2,8 @@
 # Copyright (C) 2012 Rackspace US, Inc.,
 #                    Justin Shepherd <jshepher@rackspace.com>
 # Copyright (C) 2013 Red Hat, Inc., Jeremy Agee <jagee@redhat.com>
+# Copyright (C) 2015 Red Hat, Inc., Abhijeet Kasurde <akasurde@redhat.com>
+# Copyright (C) 2017 Red Hat, Inc., Martin Schuppert <mschuppert@redhat.com>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,6 +20,7 @@
 # Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
+import os
 
 
 class OpenStackNova(Plugin):
@@ -26,44 +29,48 @@ class OpenStackNova(Plugin):
     plugin_name = "openstack_nova"
     profiles = ('openstack', 'openstack_controller', 'openstack_compute')
 
-    option_list = [("cmds", "gathers openstack nova commands", "slow", False)]
-
     def setup(self):
-        if self.get_option("cmds"):
-            self.add_cmd_output(
-                "nova-manage config list",
-                suggest_filename="nova_config_list")
-            self.add_cmd_output(
-                "nova-manage service list",
-                suggest_filename="nova_service_list")
-            self.add_cmd_output(
-                "nova-manage db version",
-                suggest_filename="nova_db_version")
-            self.add_cmd_output(
-                "nova-manage fixed list",
-                suggest_filename="nova_fixed_ip_list")
-            self.add_cmd_output(
-                "nova-manage floating list",
-                suggest_filename="nova_floating_ip_list")
-            self.add_cmd_output(
-                "nova-manage flavor list",
-                suggest_filename="nova_flavor_list")
-            self.add_cmd_output(
-                "nova-manage network list",
-                suggest_filename="nova_network_list")
-            self.add_cmd_output(
-                "nova-manage vm list",
-                suggest_filename="nova_vm_list")
+        # commands we do not need to source the environment file
+        self.add_cmd_output("nova-manage db version")
+        self.add_cmd_output("nova-manage fixed list")
+        self.add_cmd_output("nova-manage floating list")
+
+        vars = [p in os.environ for p in [
+                'OS_USERNAME', 'OS_PASSWORD', 'OS_TENANT_NAME']]
+        if not all(vars):
+            self.soslog.warning("Not all environment variables set. Source "
+                                "the environment file for the user intended "
+                                "to connect to the OpenStack environment.")
+        else:
+            self.add_cmd_output("nova service-list")
+            self.add_cmd_output("openstack flavor list --long")
+            self.add_cmd_output("nova network-list")
+            self.add_cmd_output("nova list")
+            self.add_cmd_output("nova agent-list")
+            self.add_cmd_output("nova version-list")
+            self.add_cmd_output("nova host-list")
+            self.add_cmd_output("openstack quota show")
+            self.add_cmd_output("openstack hypervisor stats show")
+            # get details for each nova instance
+            cmd = "openstack server list -f value"
+            nova_instances = self.call_ext_prog(cmd)['output']
+            for instance in nova_instances.splitlines():
+                instance = instance.split()[0]
+                cmd = "openstack server show %s" % (instance)
+                self.add_cmd_output(
+                    cmd,
+                    suggest_filename="instance-" + instance + ".log")
 
         self.limit = self.get_option("log_size")
         if self.get_option("all_logs"):
-            self.add_copy_spec_limit("/var/log/nova/",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/nova/", sizelimit=self.limit)
         else:
-            self.add_copy_spec_limit("/var/log/nova/*.log",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/nova/*.log", sizelimit=self.limit)
 
         self.add_copy_spec("/etc/nova/")
+
+        if self.get_option("verify"):
+            self.add_cmd_output("rpm -V %s" % ' '.join(self.packages))
 
     def postproc(self):
         protect_keys = [
@@ -112,7 +119,10 @@ class DebianNova(OpenStackNova, DebianPlugin, UbuntuPlugin):
 
     def setup(self):
         super(DebianNova, self).setup()
-        self.add_copy_spec(["/etc/sudoers.d/nova_sudoers"])
+        self.add_copy_spec([
+            "/etc/sudoers.d/nova_sudoers",
+            "/usr/share/polkit-1/rules.d/60-libvirt.rules",
+        ])
 
 
 class RedHatNova(OpenStackNova, RedHatPlugin):

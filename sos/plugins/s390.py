@@ -10,14 +10,14 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-from sos.plugins import Plugin, RedHatPlugin
+from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
 
-class S390(Plugin, RedHatPlugin):
+class S390(Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin):
     """IBM S/390
     """
 
@@ -27,7 +27,7 @@ class S390(Plugin, RedHatPlugin):
     # Check for s390 arch goes here
 
     def check_enabled(self):
-        return (self.policy().get_arch() == "s390")
+        return ("s390" in self.policy().get_arch())
 
     # Gather s390 specific information
 

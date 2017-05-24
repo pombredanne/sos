@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 import os
@@ -38,11 +38,11 @@ class Sar(Plugin,):
         # Copy all sa??, sar??, sa??.* and sar??.* files, which will net
         # compressed and uncompressed versions, typically.
         for suffix in ('', '.*'):
-            self.add_copy_spec_limit(
+            self.add_copy_spec(
                 os.path.join(self.sa_path, "sa[0-3][0-9]" + suffix),
                 sizelimit=self.sa_size, tailit=False
             )
-            self.add_copy_spec_limit(
+            self.add_copy_spec(
                 os.path.join(self.sa_path, "sar[0-3][0-9]" + suffix),
                 sizelimit=self.sa_size, tailit=False
             )

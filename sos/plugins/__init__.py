@@ -10,9 +10,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 """ This exports methods available for use by plugins for sos """
 
@@ -32,6 +32,17 @@ import errno
 # PYCOMPAT
 import six
 from six.moves import zip, filter
+
+
+def _to_u(s):
+    if not isinstance(s, six.text_type):
+        # Workaround python.six mishandling of strings ending in '\' by
+        # adding a single space following any '\' at end-of-line.
+        # See Six issue #60.
+        if s.endswith('\\'):
+            s += " "
+        s = six.u(s)
+    return s
 
 
 def regex_findall(regex, fname):
@@ -75,7 +86,7 @@ class Plugin(object):
     this and set the class variables where applicable.
 
     plugin_name is a string returned by plugin.name(). If this is set to None
-    (the default) class_.__name__.tolower() will be returned. Be sure to set
+    (the default) class\_.__name__.tolower() will be returned. Be sure to set
     this if you are defining multiple plugins that do the same thing on
     different platforms.
 
@@ -131,13 +142,13 @@ class Plugin(object):
                                    'enabled': opt[3]})
 
     @classmethod
-    def name(class_):
+    def name(cls):
         """Returns the plugin's name as a string. This should return a
         lowercase string.
         """
-        if class_.plugin_name:
-            return class_.plugin_name
-        return class_.__name__.lower()
+        if cls.plugin_name:
+            return cls.plugin_name
+        return cls.__name__.lower()
 
     def _format_msg(self, msg):
         return "[plugin:%s] %s" % (self.name(), msg)
@@ -179,6 +190,40 @@ class Plugin(object):
     def is_installed(self, package_name):
         '''Is the package $package_name installed?'''
         return self.policy().pkg_by_name(package_name) is not None
+
+    def do_cmd_private_sub(self, cmd):
+        '''Remove certificate and key output archived by sosreport. cmd
+        is the command name from which output is collected (i.e. exlcuding
+        parameters). Any matching instances are replaced with: '-----SCRUBBED'
+        and this function does not take a regexp or substituting string.
+
+        This function returns the number of replacements made.
+        '''
+        globstr = '*' + cmd + '*'
+        self._log_debug("Scrubbing certs and keys for commands matching %s"
+                        % (cmd))
+
+        if not self.executed_commands:
+            return 0
+
+        replacements = None
+        try:
+            for called in self.executed_commands:
+                if called['file'] is None:
+                    continue
+                if fnmatch.fnmatch(called['exe'], globstr):
+                    path = os.path.join(self.commons['cmddir'], called['file'])
+                    readable = self.archive.open_file(path)
+                    certmatch = re.compile("-----BEGIN.*?-----END", re.DOTALL)
+                    result, replacements = certmatch.subn(
+                        "-----SCRUBBED", readable.read())
+                    if replacements:
+                        self.archive.add_string(result, path)
+        except Exception as e:
+            msg = "Certificate/key scrubbing failed for '%s' with: '%s'"
+            self._log_error(msg % (called['exe'], e))
+            replacements = None
+        return replacements
 
     def do_cmd_output_sub(self, cmd, regexp, subst):
         '''Apply a regexp substitution to command output archived by sosreport.
@@ -465,70 +510,69 @@ class Plugin(object):
     def _add_copy_paths(self, copy_paths):
         self.copy_paths.update(copy_paths)
 
-    def add_copy_spec_limit(self, copyspec, sizelimit=None, tailit=True):
+    def add_copy_spec(self, copyspecs, sizelimit=None, tailit=True):
         """Add a file or glob but limit it to sizelimit megabytes. If fname is
         a single file the file will be tailed to meet sizelimit. If the first
         file in a glob is too large it will be tailed to meet the sizelimit.
         """
-        if not (copyspec and len(copyspec)):
+
+        if sizelimit:
+            sizelimit *= 1024 * 1024  # in MB
+
+        if not copyspecs:
             return False
 
-        if self.use_sysroot():
-            copyspec = self.join_sysroot(copyspec)
-        files = glob.glob(copyspec)
-        files.sort()
-        if len(files) == 0:
-            return
-
-        current_size = 0
-        limit_reached = False
-        sizelimit *= 1024 * 1024  # in MB
-        _file = None
-
-        for _file in files:
-            current_size += os.stat(_file)[stat.ST_SIZE]
-            if sizelimit and current_size > sizelimit:
-                limit_reached = True
-                break
-            self._add_copy_paths([_file])
-
-        if limit_reached and tailit:
-            file_name = _file
-
-            if file_name[0] == os.sep:
-                file_name = file_name.lstrip(os.sep)
-            strfile = file_name.replace(os.path.sep, ".") + ".tailed"
-            self.add_string_as_file(tail(_file, sizelimit), strfile)
-            rel_path = os.path.relpath('/', os.path.dirname(_file))
-            link_path = os.path.join(rel_path, 'sos_strings',
-                                     self.name(), strfile)
-            self.archive.add_link(link_path, _file)
-
-    def add_copy_spec(self, copyspecs):
-        """Add a file specification (can be file, dir,or shell glob) to be
-        copied into the sosreport by this module.
-        """
         if isinstance(copyspecs, six.string_types):
             copyspecs = [copyspecs]
+
         for copyspec in copyspecs:
+            if not (copyspec and len(copyspec)):
+                return False
+
             if self.use_sysroot():
                 copyspec = self.join_sysroot(copyspec)
-            if not (copyspec and len(copyspec)):
-                self._log_warn("added null or empty copy spec")
-                return False
-            copy_paths = self._expand_copy_spec(copyspec)
-            self._add_copy_paths(copy_paths)
-            self._log_info("added copyspec '%s'" % copy_paths)
+
+            files = self._expand_copy_spec(copyspec)
+            files.sort()
+            if len(files) == 0:
+                continue
+
+            current_size = 0
+            limit_reached = False
+            _file = None
+
+            for _file in files:
+                try:
+                    current_size += os.stat(_file)[stat.ST_SIZE]
+                except (OSError, FileNotFoundError):
+                    self._log_info("failed to stat '%s'" % _file)
+                if sizelimit and current_size > sizelimit:
+                    limit_reached = True
+                    break
+                self._add_copy_paths([_file])
+
+            if limit_reached and tailit:
+                file_name = _file
+
+                if file_name[0] == os.sep:
+                    file_name = file_name.lstrip(os.sep)
+                strfile = file_name.replace(os.path.sep, ".") + ".tailed"
+                self.add_string_as_file(tail(_file, sizelimit), strfile)
+                rel_path = os.path.relpath('/', os.path.dirname(_file))
+                link_path = os.path.join(rel_path, 'sos_strings',
+                                         self.name(), strfile)
+                self.archive.add_link(link_path, _file)
 
     def get_command_output(self, prog, timeout=300, stderr=True,
-                           chroot=True, runat=None):
+                           chroot=True, runat=None, env=None):
         if chroot or self.commons['cmdlineopts'].chroot == 'always':
             root = self.sysroot
         else:
             root = None
 
         result = sos_get_command_output(prog, timeout=timeout, stderr=stderr,
-                                        chroot=root, chdir=runat)
+                                        chroot=root, chdir=runat,
+                                        env=env)
 
         if result['status'] == 124:
             self._log_warn("command '%s' timed out after %ds"
@@ -542,7 +586,8 @@ class Plugin(object):
                                "re-trying in host root"
                                % (prog.split()[0], root))
                 return self.get_command_output(prog, timeout=timeout,
-                                               chroot=False, runat=runat)
+                                               chroot=False, runat=runat,
+                                               env=env)
             self._log_debug("could not run '%s': command not found" % prog)
         return result
 
@@ -561,24 +606,33 @@ class Plugin(object):
         """
         return self.call_ext_prog(prog)['status'] == 0
 
+    def _add_cmd_output(self, cmd, suggest_filename=None,
+                        root_symlink=None, timeout=300, stderr=True,
+                        chroot=True, runat=None, env=None):
+        """Internal helper to add a single command to the collection list."""
+        cmdt = (
+            cmd, suggest_filename,
+            root_symlink, timeout, stderr,
+            chroot, runat, env
+        )
+        _tuplefmt = "('%s', '%s', '%s', %s, '%s', '%s', '%s', '%s')"
+        _logstr = "packed command tuple: " + _tuplefmt
+        self._log_debug(_logstr % cmdt)
+        self.collect_cmds.append(cmdt)
+        self._log_info("added cmd output '%s'" % cmd)
+
     def add_cmd_output(self, cmds, suggest_filename=None,
                        root_symlink=None, timeout=300, stderr=True,
-                       chroot=True, runat=None):
+                       chroot=True, runat=None, env=None):
         """Run a program or a list of programs and collect the output"""
         if isinstance(cmds, six.string_types):
             cmds = [cmds]
         if len(cmds) > 1 and (suggest_filename or root_symlink):
             self._log_warn("ambiguous filename or symlink for command list")
         for cmd in cmds:
-            cmdt = (
-                cmd, suggest_filename, root_symlink, timeout, stderr,
-                chroot, runat
-            )
-            _tuplefmt = "('%s', '%s', '%s', %s, '%s', '%s', '%s')"
-            _logstr = "packed command tuple: " + _tuplefmt
-            self._log_debug(_logstr % cmdt)
-            self.collect_cmds.append(cmdt)
-            self._log_info("added cmd output '%s'" % cmd)
+            self._add_cmd_output(cmd, suggest_filename,
+                                 root_symlink, timeout, stderr,
+                                 chroot, runat, env)
 
     def get_cmd_output_path(self, name=None, make=True):
         """Return a path into which this module should store collected
@@ -625,21 +679,23 @@ class Plugin(object):
     def add_string_as_file(self, content, filename):
         """Add a string to the archive as a file named `filename`"""
         self.copy_strings.append((content, filename))
-        content = "..." + (content.splitlines()[0]).decode('utf8', 'ignore')
+        if isinstance(content, six.string_types):
+            content = "..." + content.splitlines()[0]
+        else:
+            content = ("..." +
+                       (content.splitlines()[0]).decode('utf8', 'ignore'))
         self._log_debug("added string '%s' as '%s'" % (content, filename))
 
     def get_cmd_output_now(self, exe, suggest_filename=None,
                            root_symlink=False, timeout=300, stderr=True,
-                           chroot=True, runat=None):
+                           chroot=True, runat=None, env=None):
         """Execute a command and save the output to a file for inclusion in the
         report.
         """
         start = time()
         result = self.get_command_output(exe, timeout=timeout, stderr=stderr,
-                                         chroot=chroot, runat=runat)
-        # 126 means 'found but not executable'
-        if result['status'] == 126 or result['status'] == 127:
-            return None
+                                         chroot=chroot, runat=runat,
+                                         env=env)
         self._log_debug("collected output of '%s' in %s"
                         % (exe.split()[0], time() - start))
 
@@ -682,6 +738,67 @@ class Plugin(object):
         """
         self.custom_text += text
 
+    def add_journal(self, units=None, boot=None, since=None, until=None,
+                    lines=None, allfields=False, output=None, timeout=None):
+        """ Collect journald logs from one of more units.
+
+        Keyword arguments:
+        units     -- A string, or list of strings specifying the systemd
+                     units for which journal entries will be collected.
+        boot      -- A string selecting a boot index using the journalctl
+                     syntax. The special values 'this' and 'last' are also
+                     accepted.
+        since     -- A string representation of the start time for journal
+                     messages.
+        until     -- A string representation of the end time for journal
+                     messages.
+        lines     -- The maximum number of lines to be collected.
+        allfields -- Include all journal fields regardless of size or
+                     non-printable characters.
+        output    -- A journalctl output control string, for example
+                     "verbose".
+        timeout   -- An optional timeout in seconds.
+        """
+        journal_cmd = "journalctl --no-pager "
+        unit_opt = " --unit %s"
+        boot_opt = " --boot %s"
+        since_opt = " --since %s"
+        until_opt = " --until %s"
+        lines_opt = " --lines %s"
+        output_opt = " --output %s"
+
+        if isinstance(units, six.string_types):
+            units = [units]
+
+        if units:
+            for unit in units:
+                journal_cmd += unit_opt % unit
+
+        if allfields:
+            journal_cmd += " --all"
+
+        if boot:
+            if boot == "this":
+                boot = ""
+            if boot == "last":
+                boot = "-1"
+            journal_cmd += boot_opt % boot
+
+        if since:
+            journal_cmd += since_opt % since
+
+        if until:
+            journal_cmd += until_opt % until
+
+        if lines:
+            journal_cmd += lines_opt % lines
+
+        if output:
+            journal_cmd += output_opt % output
+
+        self._log_debug("collecting journal: %s" % journal_cmd)
+        self._add_cmd_output(journal_cmd, None, None, timeout)
+
     def _expand_copy_spec(self, copyspec):
         return glob.glob(copyspec)
 
@@ -697,20 +814,26 @@ class Plugin(object):
                 suggest_filename, root_symlink,
                 timeout,
                 stderr,
-                chroot, runat
+                chroot, runat,
+                env
             ) = progs[0]
             self._log_debug("unpacked command tuple: " +
-                            "('%s', '%s', '%s', %s, '%s', '%s', '%s')" %
+                            "('%s', '%s', '%s', %s, '%s', '%s', '%s', '%s')" %
                             progs[0])
             self._log_info("collecting output of '%s'" % prog)
             self.get_cmd_output_now(prog, suggest_filename=suggest_filename,
                                     root_symlink=root_symlink, timeout=timeout,
-                                    stderr=stderr, chroot=chroot, runat=runat)
+                                    stderr=stderr, chroot=chroot, runat=runat,
+                                    env=env)
 
     def _collect_strings(self):
         for string, file_name in self.copy_strings:
             content = "..."
-            content += (string.splitlines()[0]).decode('utf8', 'ignore')
+            if isinstance(string, six.string_types):
+                content = "..." + content.splitlines()[0]
+            else:
+                content = ("..." +
+                           (content.splitlines()[0]).decode('utf8', 'ignore'))
             self._log_info("collecting string '%s' as '%s'"
                            % (content, file_name))
             try:
@@ -783,7 +906,7 @@ class Plugin(object):
         allows browsing the results.
         """
         # make this prettier
-        html = '<hr/><a name="%s"></a>\n' % self.name()
+        html = u'<hr/><a name="%s"></a>\n' % self.name()
 
         # Intro
         html = html + "<h2> Plugin <em>" + self.name() + "</em></h2>\n"
@@ -793,9 +916,9 @@ class Plugin(object):
             html = html + "<p>Files copied:<br><ul>\n"
             for afile in self.copied_files:
                 html = html + '<li><a href="%s">%s</a>' % \
-                    (".." + afile['dstpath'], afile['srcpath'])
+                    (u'..' + _to_u(afile['dstpath']), _to_u(afile['srcpath']))
                 if afile['symlink'] == "yes":
-                    html = html + " (symlink to %s)" % afile['pointsto']
+                    html = html + " (symlink to %s)" % _to_u(afile['pointsto'])
                 html = html + '</li>\n'
             html = html + "</ul></p>\n"
 
@@ -806,27 +929,30 @@ class Plugin(object):
             # don't use relpath - these are HTML paths not OS paths.
             for cmd in self.executed_commands:
                 if cmd["file"] and len(cmd["file"]):
-                    cmd_rel_path = "../" + self.commons['cmddir'] \
-                        + "/" + cmd['file']
+                    cmd_rel_path = u"../" + _to_u(self.commons['cmddir']) \
+                        + "/" + _to_u(cmd['file'])
                     html = html + '<li><a href="%s">%s</a></li>\n' % \
-                        (cmd_rel_path, cmd['exe'])
+                        (cmd_rel_path, _to_u(cmd['exe']))
                 else:
-                    html = html + '<li>%s</li>\n' % (cmd['exe'])
+                    html = html + '<li>%s</li>\n' % (_to_u(cmd['exe']))
             html = html + "</ul></p>\n"
 
         # Alerts
         if len(self.alerts):
             html = html + "<p>Alerts:<br><ul>\n"
             for alert in self.alerts:
-                html = html + '<li>%s</li>\n' % alert
+                html = html + '<li>%s</li>\n' % _to_u(alert)
             html = html + "</ul></p>\n"
 
         # Custom Text
         if self.custom_text != "":
             html = html + "<p>Additional Information:<br>\n"
-            html = html + self.custom_text + "</p>\n"
+            html = html + _to_u(self.custom_text) + "</p>\n"
 
-        return html
+        if six.PY2:
+            return html.encode('utf8')
+        else:
+            return html
 
 
 class RedHatPlugin(object):
@@ -851,6 +977,11 @@ class UbuntuPlugin(object):
 
 class DebianPlugin(object):
     """Tagging class for Debian Linux"""
+    pass
+
+
+class SuSEPlugin(object):
+    """Tagging class for SuSE Linux distributions"""
     pass
 
 

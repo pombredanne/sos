@@ -10,9 +10,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
@@ -28,13 +28,24 @@ class Sssd(Plugin):
     def setup(self):
         self.add_copy_spec([
             "/etc/sssd/sssd.conf",
-            "/var/log/sssd/*"
+            "/var/log/sssd/*",
+            "/var/lib/sss/pubconf/krb5.include.d/*",
+            # SSSD 1.14
+            "/etc/sssd/conf.d/*.conf"
         ])
 
+        self.add_cmd_output("sssctl config-check")
+
+        domain_file = self.get_cmd_output_now("sssctl domain-list")
+        if domain_file:
+            for domain_name in open(domain_file).read().splitlines():
+                self.add_cmd_output("sssctl domain-status -o "+domain_name)
+
     def postproc(self):
-        self.do_file_sub("/etc/sssd/sssd.conf",
-                         r"(\s*ldap_default_authtok\s*=\s*)\S+",
-                         r"\1********")
+        regexp = r"(\s*ldap_default_authtok\s*=\s*)\S+"
+
+        self.do_file_sub("/etc/sssd/sssd.conf", regexp, r"\1********")
+        self.do_path_regex_sub("/etc/sssd/conf.d/*", regexp, r"\1********")
 
 
 class RedHatSssd(Sssd, RedHatPlugin):

@@ -29,12 +29,12 @@ class PowerKVMPolicy(RedHatPolicy):
     vendor = "IBM"
     vendor_url = "http://www-03.ibm.com/systems/power/software/linux/powerkvm"
 
-    def __init__(self):
-        super(PowerKVMPolicy, self).__init__()
+    def __init__(self, sysroot=None):
+        super(PowerKVMPolicy, self).__init__(sysroot=sysroot)
         self.valid_subclasses = [PowerKVMPlugin, RedHatPlugin]
 
     @classmethod
-    def check(self):
+    def check(cls):
         """This method checks to see if we are running on PowerKVM.
            It returns True or False."""
         return os.path.isfile('/etc/ibm_powerkvm-release')
@@ -54,12 +54,12 @@ class ZKVMPolicy(RedHatPolicy):
     vendor = "IBM Hypervisor"
     vendor_url = "http://www.ibm.com/systems/z/linux/IBMHypervisor/support/"
 
-    def __init__(self):
-        super(ZKVMPolicy, self).__init__()
+    def __init__(self, sysroot=None):
+        super(ZKVMPolicy, self).__init__(sysroot=sysroot)
         self.valid_subclasses = [ZKVMPlugin, RedHatPlugin]
 
     @classmethod
-    def check(self):
+    def check(cls):
         """This method checks to see if we are running on IBM Z KVM. It
         returns True or False."""
         return os.path.isfile('/etc/base-release')

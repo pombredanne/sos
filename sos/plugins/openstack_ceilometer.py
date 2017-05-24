@@ -14,9 +14,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
@@ -32,12 +32,13 @@ class OpenStackCeilometer(Plugin):
         # Ceilometer
         self.limit = self.get_option("log_size")
         if self.get_option("all_logs"):
-            self.add_copy_spec_limit("/var/log/ceilometer/",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/ceilometer/", sizelimit=self.limit)
         else:
-            self.add_copy_spec_limit("/var/log/ceilometer/*.log",
-                                     sizelimit=self.limit)
+            self.add_copy_spec("/var/log/ceilometer/*.log",
+                               sizelimit=self.limit)
         self.add_copy_spec("/etc/ceilometer/")
+        if self.get_option("verify"):
+            self.add_cmd_output("rpm -V %s" % ' '.join(self.packages))
 
     def postproc(self):
         protect_keys = [

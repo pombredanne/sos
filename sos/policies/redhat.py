@@ -10,9 +10,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 # This enables the use of with syntax in python 2.5 (e.g. jython)
 from __future__ import print_function
@@ -58,13 +58,21 @@ class RedHatPolicy(LinuxPolicy):
 
         pkgs = self.package_manager.all_pkgs()
 
-        # If rpm query timed out after timeout duration exit
+        # If rpm query failed, exit
         if not pkgs:
             print("Could not obtain installed package list", file=sys.stderr)
             sys.exit(1)
 
         # handle PATH for UsrMove
-        if pkgs['filesystem']['version'][0] == '3':
+        if 'filesystem' not in pkgs:
+            print("Could not find 'filesystem' package: "
+                  "assuming PATH settings")
+            usrmove = True
+        else:
+            filesys_version = pkgs['filesystem']['version']
+            usrmove = True if filesys_version[0] == '3' else False
+
+        if usrmove:
             self.PATH = "/usr/sbin:/usr/bin:/root/bin"
         else:
             self.PATH = "/sbin:/bin:/usr/sbin:/usr/bin:/root/bin"
@@ -73,7 +81,7 @@ class RedHatPolicy(LinuxPolicy):
         self.set_exec_path()
 
     @classmethod
-    def check(self):
+    def check(cls):
         """This method checks to see if we are running on Red Hat. It must be
         overriden by concrete subclasses to return True when running on a
         Fedora, RHEL or other Red Hat distribution or False otherwise."""
@@ -83,8 +91,9 @@ class RedHatPolicy(LinuxPolicy):
         """Check if sos is running in a container and perform container
         specific initialisation based on ENV_HOST_SYSROOT.
         """
-        if ENV_CONTAINER_UUID in os.environ:
-            self._in_container = True
+        if ENV_CONTAINER in os.environ:
+            if os.environ[ENV_CONTAINER] in ['docker', 'oci']:
+                self._in_container = True
         if ENV_HOST_SYSROOT in os.environ:
             self._host_sysroot = os.environ[ENV_HOST_SYSROOT]
         use_sysroot = self._in_container and self._host_sysroot != '/'
@@ -124,7 +133,7 @@ class RedHatPolicy(LinuxPolicy):
         return self.host_name()
 
 # Container environment variables on Red Hat systems.
-ENV_CONTAINER_UUID = 'container_uuid'
+ENV_CONTAINER = 'container'
 ENV_HOST_SYSROOT = 'HOST'
 
 
@@ -157,10 +166,10 @@ No changes will be made to system configuration.
         super(RHELPolicy, self).__init__(sysroot=sysroot)
 
     @classmethod
-    def check(self):
+    def check(cls):
         """This method checks to see if we are running on RHEL. It returns True
         or False."""
-        return (os.path.isfile(self._redhat_release) and not
+        return (os.path.isfile(cls._redhat_release) and not
                 os.path.isfile('/etc/fedora-release'))
 
     def dist_version(self):
@@ -183,9 +192,9 @@ No changes will be made to system configuration.
     def rhn_username(self):
         try:
             # cfg = config.initUp2dateConfig()
-
-            return rpclib.xmlrpclib.loads(
+            rhn_username = rpclib.xmlrpclib.loads(
                 up2dateAuth.getSystemId())[0][0]['username']
+            return rhn_username.encode('utf-8', 'ignore')
         except:
             # ignore any exception and return an empty username
             return ""
@@ -215,11 +224,11 @@ organization before being passed to any third party.
 """)
 
     @classmethod
-    def check(self):
+    def check(cls):
         atomic = False
         if ENV_HOST_SYSROOT not in os.environ:
             return atomic
-        host_release = os.environ[ENV_HOST_SYSROOT] + self._redhat_release
+        host_release = os.environ[ENV_HOST_SYSROOT] + cls._redhat_release
         if not os.path.exists(host_release):
             return False
         try:
@@ -240,7 +249,7 @@ class FedoraPolicy(RedHatPolicy):
         super(FedoraPolicy, self).__init__(sysroot=sysroot)
 
     @classmethod
-    def check(self):
+    def check(cls):
         """This method checks to see if we are running on Fedora. It returns
         True or False."""
         return os.path.isfile('/etc/fedora-release')

@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin
 import os
@@ -44,7 +44,7 @@ class Xen(Plugin, RedHatPlugin):
         return (self.determine_xen_host() == "baremetal")
 
     def is_running_xenstored(self):
-        xs_pid = self.call_ext_prof("pidof xenstored")['ouput']
+        xs_pid = self.call_ext_prog("pidof xenstored")['output']
         xs_pidnum = re.split('\n$', xs_pid)[0]
         return xs_pidnum.isdigit()
 

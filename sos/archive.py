@@ -12,9 +12,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 import os
 import time
 import tarfile
@@ -24,9 +24,12 @@ import shlex
 import re
 import codecs
 import sys
+import errno
 
 # required for compression callout (FIXME: move to policy?)
 from subprocess import Popen, PIPE
+
+from sos.utilities import sos_get_command_output, is_executable
 
 try:
     import selinux
@@ -43,10 +46,10 @@ class Archive(object):
     """Abstract base class for archives."""
 
     @classmethod
-    def archive_type(class_):
+    def archive_type(cls):
         """Returns the archive class's name as a string.
         """
-        return class_.__name__
+        return cls.__name__
 
     log = logging.getLogger("sos")
 
@@ -158,22 +161,38 @@ class FileCacheArchive(Archive):
             dest = src
         dest = self.dest_path(dest)
         self._check_path(dest)
-        try:
-            shutil.copy(src, dest)
-        except IOError as e:
-            self.log_info("caught '%s' copying '%s'" % (e, src))
-        try:
-            shutil.copystat(src, dest)
-        except OSError:
-            # SELinux xattrs in /proc and /sys throw this
-            pass
-        try:
-            stat = os.stat(src)
-            os.chown(dest, stat.st_uid, stat.st_gid)
-        except Exception as e:
-            self.log_debug("caught '%s' setting ownership of '%s'" % (e, dest))
-        self.log_debug("added '%s' to FileCacheArchive '%s'" %
-                       (src, self._archive_root))
+
+        # Handle adding a file from either a string respresenting
+        # a path, or a File object open for reading.
+        if not getattr(src, "read", None):
+            # path case
+            try:
+                shutil.copy(src, dest)
+            except IOError as e:
+                self.log_info("caught '%s' copying '%s'" % (e, src))
+            try:
+                shutil.copystat(src, dest)
+            except OSError:
+                # SELinux xattrs in /proc and /sys throw this
+                pass
+            try:
+                stat = os.stat(src)
+                os.chown(dest, stat.st_uid, stat.st_gid)
+            except Exception as e:
+                self.log_debug("caught '%s' setting ownership of '%s'"
+                               % (e, dest))
+            file_name = "'%s'" % src
+        else:
+            # Open file case: first rewind the file to obtain
+            # everything written to it.
+            src.seek(0)
+            with open(dest, "w") as f:
+                for line in src:
+                    f.write(line)
+            file_name = "open file"
+
+        self.log_debug("added %s to FileCacheArchive '%s'" %
+                       (file_name, self._archive_root))
 
     def add_string(self, content, dest):
         src = dest
@@ -207,7 +226,14 @@ class FileCacheArchive(Archive):
         dest = self.dest_path(path)
         self._check_path(dest)
         if not os.path.exists(dest):
-            os.mknod(dest, mode, device)
+            try:
+                os.mknod(dest, mode, device)
+            except OSError as e:
+                if e.errno == errno.EPERM:
+                    msg = "Operation not permitted"
+                    self.log_info("add_node: %s - mknod '%s'" % (msg, dest))
+                    return
+                raise e
             shutil.copystat(path, dest)
 
     def _makedirs(self, path, mode=0o700):
@@ -246,7 +272,12 @@ class FileCacheArchive(Archive):
         self.log_info("built archive at '%s' (size=%d)" % (self._archive_name,
                       os.stat(self._archive_name).st_size))
         self.method = method
-        return self._compress()
+        try:
+            return self._compress()
+        except Exception as e:
+            exp_msg = "An error occurred compressing the archive: "
+            self.log_error("%s %s" % (exp_msg, e))
+            return self.name()
 
 
 # Compatibility version of the tarfile.TarFile class. This exists to allow
@@ -387,31 +418,33 @@ class TarFileArchive(FileCacheArchive):
         tar.close()
 
     def _compress(self):
-        methods = ['xz', 'bzip2', 'gzip']
+        methods = []
+        # Make sure that valid compression commands exist.
+        for method in ['xz', 'bzip2', 'gzip']:
+            if is_executable(method):
+                methods.append(method)
+            else:
+                self.log_error("\"%s\" command not found." % method)
         if self.method in methods:
             methods = [self.method]
 
-        last_error = Exception("compression failed for an unknown reason")
-
+        exp_msg = "No compression utilities found."
+        last_error = Exception(exp_msg)
         for cmd in methods:
             suffix = "." + cmd.replace('ip', '')
             # use fast compression if using xz or bz2
             if cmd != "gzip":
                 cmd = "%s -1" % cmd
             try:
-                command = shlex.split("%s %s" % (cmd, self.name()))
-                p = Popen(command,
-                          stdout=PIPE,
-                          stderr=PIPE,
-                          bufsize=-1,
-                          close_fds=True)
-                stdout, stderr = p.communicate()
-                if stdout:
-                    self.log_info(stdout.decode('utf-8', 'ignore'))
-                if stderr:
-                    self.log_error(stderr.decode('utf-8', 'ignore'))
+                r = sos_get_command_output("%s %s" % (cmd, self.name()),
+                                           timeout=0)
+
+                if r['status']:
+                    self.log_info(r['output'])
+
                 self._suffix += suffix
                 return self.name()
+
             except Exception as e:
                 last_error = e
         raise last_error

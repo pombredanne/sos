@@ -1,4 +1,5 @@
 # Copyright (C) 2014 Red Hat, Inc. Bryn M. Reeves <bmr@redhat.com>
+
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
@@ -9,11 +10,12 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
+import os.path
 
 
 class Numa(Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin):
@@ -30,7 +32,7 @@ class Numa(Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin):
             "/etc/numad.conf",
             "/etc/logrotate.d/numad"
         ])
-        self.add_copy_spec_limit(
+        self.add_copy_spec(
             "/var/log/numad.log*",
             sizelimit=self.get_option("log_size")
         )
@@ -40,6 +42,13 @@ class Numa(Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin):
             "numastat -n",
             "numactl --show",
             "numactl --hardware",
+        ])
+
+        numa_path = "/sys/devices/system/node"
+        self.add_copy_spec([
+            os.path.join(numa_path, "node*/meminfo"),
+            os.path.join(numa_path, "node*/cpulist"),
+            os.path.join(numa_path, "node*/distance")
         ])
 
 # vim: set et ts=4 sw=4 :

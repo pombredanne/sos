@@ -11,9 +11,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin
 from glob import glob
@@ -23,10 +23,11 @@ class Monit(Plugin, RedHatPlugin):
     """Monit monitoring daemon
     """
     packages = ('monit',)
-    profiles = ('system')
+    profiles = ('system',)
     plugin_name = 'monit'
 
     # Define configuration files
+    # FIXME: direct globs will fail in container environments.
     monit_conf = glob("/etc/monit.d/*")
     monit_conf.append("/etc/monit.conf")
     monit_conf.append("/etc/monitrc")
@@ -38,7 +39,7 @@ class Monit(Plugin, RedHatPlugin):
 
     def setup(self):
         self.add_cmd_output("monit status")
-        self.add_copy_spec([self.monit_log, self.monit_conf])
+        self.add_copy_spec(self.monit_log + self.monit_conf)
 
     def postproc(self):
         # Post process the files included to scrub any

@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin, UbuntuPlugin
 
@@ -32,9 +32,9 @@ class RedHatSquid(Squid, RedHatPlugin):
         log_size = self.get_option('log_size')
         log_path = "/var/log/squid/"
         self.add_copy_spec("/etc/squid/squid.conf")
-        self.add_copy_spec_limit(log_path + "access.log", sizelimit=log_size)
-        self.add_copy_spec_limit(log_path + "cache.log", sizelimit=log_size)
-        self.add_copy_spec_limit(log_path + "squid.out", sizelimit=log_size)
+        self.add_copy_spec(log_path + "access.log", sizelimit=log_size)
+        self.add_copy_spec(log_path + "cache.log", sizelimit=log_size)
+        self.add_copy_spec(log_path + "squid.out", sizelimit=log_size)
 
 
 class DebianSquid(Squid, DebianPlugin, UbuntuPlugin):
@@ -44,11 +44,11 @@ class DebianSquid(Squid, DebianPlugin, UbuntuPlugin):
     packages = ('squid3',)
 
     def setup(self):
-        self.add_copy_spec_limit("/etc/squid3/squid.conf",
-                                 sizelimit=self.get_option('log_size'))
-        self.add_copy_spec_limit("/var/log/squid3/*",
-                                 sizelimit=self.get_option('log_size'))
+        self.add_copy_spec("/etc/squid3/squid.conf",
+                           sizelimit=self.get_option('log_size'))
+        self.add_copy_spec("/var/log/squid3/*",
+                           sizelimit=self.get_option('log_size'))
         self.add_copy_spec(['/etc/squid-deb-proxy'])
-        self.add_copy_spec_limit("/var/log/squid-deb-proxy/*",
-                                 sizelimit=self.get_option('log_size'))
+        self.add_copy_spec("/var/log/squid-deb-proxy/*",
+                           sizelimit=self.get_option('log_size'))
 # vim: set et ts=4 sw=4 :

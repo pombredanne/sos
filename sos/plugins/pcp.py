@@ -10,9 +10,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, RedHatPlugin, DebianPlugin
 import os
@@ -113,7 +113,7 @@ class Pcp(Plugin, RedHatPlugin, DebianPlugin):
         # As a default strategy, collect PCP_LOG_DIR/pmlogger/* only if the
         # total size is moderately small: < 100MB. Override is possible via
         # the 'all_pcplogs' option.
-        # FIXME: Doing a recursive size check because add_copy_spec_limit
+        # FIXME: Doing a recursive size check because add_copy_spec
         # won't work for directory trees. I.e. we can't say fetch /foo/bar/
         # only if it is < 100MB. To be killed once the Plugin base class will
         # add a method for this use case via issue #281
@@ -131,13 +131,6 @@ class Pcp(Plugin, RedHatPlugin, DebianPlugin):
             if self.pcplog_totalsize == 0 or dirsize < max_mb_size:
                 if os.path.isdir(path):
                     self.add_copy_spec(path)
-                else:
-                    self._log_warn("%s not found" % path)
-            else:
-                self._log_warn("skipped %s. Size %d bigger than %d"
-                               % (path, dirsize, max_mb_size))
-        else:
-            self._log_warn("pcp_hostname was not set. Skipping.")
 
         self.add_copy_spec([
             # Collect PCP_LOG_DIR/pmcd and PCP_LOG_DIR/NOTICES

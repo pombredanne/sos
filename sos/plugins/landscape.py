@@ -8,9 +8,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from sos.plugins import Plugin, UbuntuPlugin
 
@@ -32,10 +32,9 @@ class Landscape(Plugin, UbuntuPlugin):
         self.add_copy_spec("/etc/default/landscape-server")
         if not self.get_option("all_logs"):
             limit = self.get_option("log_size")
-            self.add_copy_spec_limit("/var/log/landscape/*.log",
-                                     sizelimit=limit)
-            self.add_copy_spec_limit("/var/log/landscape-server/*.log",
-                                     sizelimit=limit)
+            self.add_copy_spec("/var/log/landscape/*.log", sizelimit=limit)
+            self.add_copy_spec("/var/log/landscape-server/*.log",
+                               sizelimit=limit)
         else:
             self.add_copy_spec("/var/log/landscape")
             self.add_copy_spec("/var/log/landscape-server")
